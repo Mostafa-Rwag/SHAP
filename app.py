@@ -6,9 +6,12 @@ import numpy as np
 from flask import Flask, request, jsonify
 from PIL import Image
 
-# إعدادات البيئة لتقليل رسائل التحذير واستخدام CPU فقط
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+# إعدادات البيئة لإجبار TensorFlow على استخدام CPU فقط وتقليل الرسائل التحذيرية
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # تعطيل استخدام GPU
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # تقليل مستوى رسائل السجلات إلى الأخطاء فقط
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # تعطيل oneDNN لتجنب نتائج حسابية مختلفة
+
+# خفض مستوى سجلات TensorFlow
 tf.get_logger().setLevel('ERROR')
 
 # إنشاء تطبيق Flask
