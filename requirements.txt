@@ -1,0 +1,7 @@
+tensorflow
+shap
+numpy
+matplotlib
+gunicorn
+flask
+pillow  # لتحميل الصور
