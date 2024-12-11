@@ -1,57 +1,74 @@
-import os
-import tensorflow as tf
-from tensorflow.keras.applications import resnet50
-from tensorflow.keras.applications.resnet50 import preprocess_input, decode_predictions
-import numpy as np
 from flask import Flask, request, jsonify
+import os
+import numpy as np
 from PIL import Image
+import shap
 
-# إعدادات البيئة لتقليل رسائل التحذير وإجبار استخدام CPU
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"  # تعطيل GPU
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # تعطيل رسائل التحذير غير المهمة
-os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # تعطيل خيارات oneDNN
-
-# إنشاء تطبيق Flask
 app = Flask(__name__)
 
-# تحميل نموذج ResNet50
-model = resnet50.ResNet50(weights="imagenet")
+# إنشاء مجلد لتخزين الصور إذا لم يكن موجوداً
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
-# وظيفة لتحميل ومعالجة الصور
-def load_and_preprocess_image(image):
-    img = image.resize((224, 224))
-    img_array = np.array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array = preprocess_input(img_array)
-    return img_array
+# تحديد المكان الذي سيتم فيه تخزين الملفات المرفوعة
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    # التحقق من وجود ملف الصورة في الطلب
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image uploaded'}), 400
+@app.route('/')
+def index():
+    return "Welcome to the SHAP Image Explanation API!"
 
-    # قراءة الصورة من الطلب
-    file = request.files['image']
+# وظيفة لتفسير الصور باستخدام SHAP
+def explain_with_shap(image_path):
     try:
-        image = Image.open(file.stream)
+        # قراءة الصورة
+        image = Image.open(image_path).resize((32, 32))  # تقليص الصورة لسهولة التحليل
+        image_array = np.array(image) / 255.0  # تحويل الصورة إلى قيم بين 0 و 1
+        image_array = image_array.flatten()  # تحويل الصورة إلى مصفوفة 1D
+
+        # نموذج افتراضي لتحليل SHAP (استبدل هذا بالنموذج الفعلي الخاص بك إذا كان موجوداً)
+        def dummy_model(input_array):
+            # نموذج بسيط يرجع متوسط قيم الإدخال لكل صورة
+            return np.mean(input_array, axis=1, keepdims=True)
+
+        # إعداد SHAP Explainer
+        explainer = shap.KernelExplainer(dummy_model, np.zeros((1, image_array.size)))
+
+        # تفسير الصورة
+        shap_values = explainer.shap_values(np.expand_dims(image_array, axis=0))
+
+        # إرجاع النتائج
+        return {"shap_values": shap_values[0].tolist()}
     except Exception as e:
-        return jsonify({'error': f'Invalid image: {str(e)}'}), 400
+        return {"error": "Error in SHAP explanation", "details": str(e)}
 
-    # معالجة الصورة
-    image_array = load_and_preprocess_image(image)
+# مسار رفع الصورة وتحليلها
+@app.route('/upload', methods=['POST'])
+def upload_image():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
 
-    # التنبؤ بالفئات
-    predictions = model.predict(image_array)
-    decoded_predictions = decode_predictions(predictions, top=3)[0]
+    file = request.files['file']
 
-    # تنسيق النتائج للإرجاع
-    results = [
-        {"label": label, "score": float(score)}
-        for (_, label, score) in decoded_predictions
-    ]
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
 
-    return jsonify({'predictions': results})
+    try:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(file_path)
+
+        # تفسير الصورة باستخدام SHAP
+        shap_results = explain_with_shap(file_path)
+
+        return jsonify({
+            "message": "File uploaded successfully",
+            "file_path": file_path,
+            "shap_explanation": shap_results
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8000)
+    app.run(debug=True, host='0.0.0.0', port=8080)
