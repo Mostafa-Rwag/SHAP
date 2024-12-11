@@ -22,11 +22,11 @@ def index():
 def explain_with_shap(image_path):
     try:
         # قراءة الصورة
-        image = Image.open(image_path).resize((32, 32))  # تقليص الصورة لسهولة التحليل
+        image = Image.open(image_path).resize((32, 32))  # تصغير الصورة لتسريع المعالجة
         image_array = np.array(image) / 255.0  # تحويل الصورة إلى قيم بين 0 و 1
         image_array = image_array.flatten()  # تحويل الصورة إلى مصفوفة 1D
 
-        # نموذج افتراضي لتحليل SHAP (استبدل هذا بالنموذج الفعلي الخاص بك إذا كان موجوداً)
+        # نموذج افتراضي لتحليل SHAP (استبدل هذا بنموذجك الفعلي إذا كان متاحاً)
         def dummy_model(input_array):
             # نموذج بسيط يرجع متوسط قيم الإدخال لكل صورة
             return np.mean(input_array, axis=1, keepdims=True)
@@ -54,6 +54,11 @@ def upload_image():
         return jsonify({"error": "No selected file"}), 400
 
     try:
+        # التأكد من حجم الملف
+        if file.content_length > 5 * 1024 * 1024:  # حد 5 ميجابايت
+            return jsonify({"error": "File too large"}), 400
+
+        # حفظ الملف في المجلد المحدد
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
@@ -69,6 +74,6 @@ def upload_image():
     except Exception as e:
         return jsonify({"error": "Internal server error", "details": str(e)}), 500
 
-
 if __name__ == "__main__":
-    app.run(debug=True, host='0.0.0.0', port=8080)
+    # تأكد من أن التطبيق يستمع على المنفذ الصحيح
+    app.run(debug=False, host='0.0.0.0', port=8080)
