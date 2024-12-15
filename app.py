@@ -8,6 +8,8 @@ from tensorflow.keras.applications.xception import preprocess_input, decode_pred
 from tensorflow.keras.preprocessing.image import load_img, img_to_array
 import urllib.request
 import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
 
 app = Flask(__name__)
 
