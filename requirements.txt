@@ -3,3 +3,4 @@ shap
 tensorflow
 matplotlib
 numpy
+opencv-python-headless
