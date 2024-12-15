@@ -1,79 +1,68 @@
-from flask import Flask, request, jsonify
-import os
-import numpy as np
-from PIL import Image
+# Install dependencies: Flask, SHAP, TensorFlow, and Matplotlib
+from flask import Flask, request, jsonify, render_template
 import shap
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.applications import xception
+from tensorflow.keras.applications.xception import preprocess_input, decode_predictions
+from tensorflow.keras.preprocessing.image import load_img, img_to_array
+import os
 
 app = Flask(__name__)
 
-# إنشاء مجلد لتخزين الصور إذا لم يكن موجوداً
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Load the pre-trained Xception model
+model = xception.Xception(weights='imagenet')
 
-# تحديد المكان الذي سيتم فيه تخزين الملفات المرفوعة
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# SHAP requires a custom masking function for image data
+explainer = shap.Explainer(model, shap.maskers.Image("inpaint_telea", (299, 299, 3)))
 
+# Define routes
 @app.route('/')
-def index():
-    return "Welcome to the SHAP Image Explanation API!"
+def home():
+    return render_template('index.html')
 
-# وظيفة لتفسير الصور باستخدام SHAP
-def explain_with_shap(image_path):
-    try:
-        # قراءة الصورة
-        image = Image.open(image_path).resize((32, 32))  # تصغير الصورة لتسريع المعالجة
-        image_array = np.array(image) / 255.0  # تحويل الصورة إلى قيم بين 0 و 1
-        image_array = image_array.flatten()  # تحويل الصورة إلى مصفوفة 1D
-
-        # نموذج افتراضي لتحليل SHAP (استبدل هذا بنموذجك الفعلي إذا كان متاحاً)
-        def dummy_model(input_array):
-            # نموذج بسيط يرجع متوسط قيم الإدخال لكل صورة
-            return np.mean(input_array, axis=1, keepdims=True)
-
-        # إعداد SHAP Explainer
-        explainer = shap.KernelExplainer(dummy_model, np.zeros((1, image_array.size)))
-
-        # تفسير الصورة
-        shap_values = explainer.shap_values(np.expand_dims(image_array, axis=0))
-
-        # إرجاع النتائج
-        return {"shap_values": shap_values[0].tolist()}
-    except Exception as e:
-        return {"error": "Error in SHAP explanation", "details": str(e)}
-
-# مسار رفع الصورة وتحليلها
-@app.route('/upload', methods=['POST'])
-def upload_image():
+@app.route('/predict', methods=['POST'])
+def predict():
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return "No file uploaded!", 400
 
     file = request.files['file']
+    if not file:
+        return "File is empty!", 400
 
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+    # Save and preprocess the uploaded image
+    file_path = os.path.join('uploads', file.filename)
+    file.save(file_path)
+    image_array, original_image = load_and_preprocess_image(file_path)
 
-    try:
-        # التأكد من حجم الملف
-        if file.content_length > 5 * 1024 * 1024:  # حد 5 ميجابايت
-            return jsonify({"error": "File too large"}), 400
+    # Add batch dimension and make predictions
+    image_batch = np.expand_dims(image_array, axis=0)
+    predictions = model.predict(image_batch)
+    decoded_predictions = decode_predictions(predictions, top=3)[0]
 
-        # حفظ الملف في المجلد المحدد
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-        file.save(file_path)
+    # Explain the model's predictions with SHAP
+    shap_values = explainer(image_batch)
 
-        # تفسير الصورة باستخدام SHAP
-        shap_results = explain_with_shap(file_path)
+    # Save SHAP explanation as a visualization
+    shap_image_path = os.path.join('static', 'shap_output.png')
+    shap.image_plot(shap_values, np.array([image_array]), show=False)
+    plt.savefig(shap_image_path)
+    plt.close()
 
-        return jsonify({
-            "message": "File uploaded successfully",
-            "file_path": file_path,
-            "shap_explanation": shap_results
-        }), 200
+    # Return predictions and SHAP visualization URL
+    return jsonify({
+        "predictions": decoded_predictions,
+        "shap_image_url": shap_image_path
+    })
 
-    except Exception as e:
-        return jsonify({"error": "Internal server error", "details": str(e)}), 500
+def load_and_preprocess_image("https://images.rawpixel.com/image_png_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTA4L3Jhd3BpeGVsX29mZmljZV8zMF9hX3N0dWRpb19zaG90X29mX2NhdF93YXZpbmdfaW1hZ2VzZnVsbF9ib2R5X182YzRmM2YyOC0wMGJjLTQzNTYtYjM3ZC05NDM0NTgwY2FmNDcucG5n.png"):
+    """
+    Loads and preprocesses an image for the Xception model.
+    """
+    image = load_img("https://images.rawpixel.com/image_png_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTA4L3Jhd3BpeGVsX29mZmljZV8zMF9hX3N0dWRpb19zaG90X29mX2NhdF93YXZpbmdfaW1hZ2VzZnVsbF9ib2R5X182YzRmM2YyOC0wMGJjLTQzNTYtYjM3ZC05NDM0NTgwY2FmNDcucG5n.png", target_size=(299, 299))
+    image_array = img_to_array(image)
+    image_array = preprocess_input(image_array)  # Preprocess image as required by Xception
+    return image_array, image
 
-if __name__ == "__main__":
-    # تأكد من أن التطبيق يستمع على المنفذ الصحيح
-    app.run(debug=False, host='0.0.0.0', port=8080)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
