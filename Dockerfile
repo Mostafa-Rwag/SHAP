@@ -4,14 +4,20 @@ FROM python:3.9-slim
 # Set the working directory
 WORKDIR /app
 
-# Copy project files to the container
+# Install system dependencies for OpenCV
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && apt-get clean
+
+# Copy project files
 COPY . .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expose port 5000 (or any port Railway assigns via $PORT)
+# Expose port
 EXPOSE 5000
 
-# Command to run the application
+# Run the application
 CMD ["python", "app.py"]
