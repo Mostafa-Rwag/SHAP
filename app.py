@@ -1,11 +1,12 @@
 # Install dependencies: Flask, SHAP, TensorFlow, and Matplotlib
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, jsonify
 import shap
 import numpy as np
 import matplotlib.pyplot as plt
 from tensorflow.keras.applications import xception
 from tensorflow.keras.applications.xception import preprocess_input, decode_predictions
 from tensorflow.keras.preprocessing.image import load_img, img_to_array
+import urllib.request
 import os
 
 app = Flask(__name__)
@@ -16,23 +17,15 @@ model = xception.Xception(weights='imagenet')
 # SHAP requires a custom masking function for image data
 explainer = shap.Explainer(model, shap.maskers.Image("inpaint_telea", (299, 299, 3)))
 
-# Define routes
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-@app.route('/predict', methods=['POST'])
+# Define /predict endpoint
+@app.route('/predict', methods=['GET'])
 def predict():
-    if 'file' not in request.files:
-        return "No file uploaded!", 400
+    # Define the URL of the image to download
+    image_url = "https://images.rawpixel.com/image_png_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTA4L3Jhd3BpeGVsX29mZmljZV8zMF9hX3N0dWRpb19zaG90X29mX2NhdF93YXZpbmdfaW1hZ2VzZnVsbF9ib2R5X182YzRmM2YyOC0wMGJjLTQzNTYtYjM3ZC05NDM0NTgwY2FmNDcucG5n.png"
 
-    file = request.files['file']
-    if not file:
-        return "File is empty!", 400
-
-    # Save and preprocess the uploaded image
-    file_path = os.path.join('uploads', file.filename)
-    file.save(file_path)
+    # Download and preprocess the image
+    file_path = "downloaded_image.png"
+    urllib.request.urlretrieve(image_url, file_path)
     image_array, original_image = load_and_preprocess_image(file_path)
 
     # Add batch dimension and make predictions
@@ -45,6 +38,7 @@ def predict():
 
     # Save SHAP explanation as a visualization
     shap_image_path = os.path.join('static', 'shap_output.png')
+    os.makedirs('static', exist_ok=True)
     shap.image_plot(shap_values, np.array([image_array]), show=False)
     plt.savefig(shap_image_path)
     plt.close()
@@ -55,11 +49,11 @@ def predict():
         "shap_image_url": shap_image_path
     })
 
-def load_and_preprocess_image("https://images.rawpixel.com/image_png_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTA4L3Jhd3BpeGVsX29mZmljZV8zMF9hX3N0dWRpb19zaG90X29mX2NhdF93YXZpbmdfaW1hZ2VzZnVsbF9ib2R5X182YzRmM2YyOC0wMGJjLTQzNTYtYjM3ZC05NDM0NTgwY2FmNDcucG5n.png"):
+def load_and_preprocess_image(image_path):
     """
     Loads and preprocesses an image for the Xception model.
     """
-    image = load_img("https://images.rawpixel.com/image_png_800/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTA4L3Jhd3BpeGVsX29mZmljZV8zMF9hX3N0dWRpb19zaG90X29mX2NhdF93YXZpbmdfaW1hZ2VzZnVsbF9ib2R5X182YzRmM2YyOC0wMGJjLTQzNTYtYjM3ZC05NDM0NTgwY2FmNDcucG5n.png", target_size=(299, 299))
+    image = load_img(image_path, target_size=(299, 299))
     image_array = img_to_array(image)
     image_array = preprocess_input(image_array)  # Preprocess image as required by Xception
     return image_array, image
